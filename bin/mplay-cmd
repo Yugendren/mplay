@@ -1,0 +1,42 @@
+#!/bin/bash
+# Command palette — vim-style ":" for actions (playback, playlists, queue, etc.)
+set -e
+
+cmd=$(printf '%s\n' \
+    "save playlist (from current queue)" \
+    "load playlist" \
+    "add current song to playlist" \
+    "delete playlist" \
+    "clear queue" \
+    "shuffle queue" \
+    "next song" \
+    "previous song" \
+    "play / pause" \
+    "stop" \
+    "toggle random" \
+    "toggle repeat" \
+    "toggle consume" \
+    "toggle single" \
+    "update database" \
+| fzf --reverse --height=100% \
+      --border=rounded --border-label=' command ' \
+      --info=inline --prompt='  ' \
+      --pointer='▍') || exit 0
+
+case "$cmd" in
+    "save playlist"*)       mplay-playlist save ;;
+    "load playlist")        mplay-playlist load ;;
+    "add current"*)         mplay-playlist add ;;
+    "delete playlist")      mplay-playlist delete ;;
+    "clear queue")          mpc clear >/dev/null ;;
+    "shuffle queue")        mpc shuffle >/dev/null ;;
+    "next song")            mpc next >/dev/null ;;
+    "previous song")        mpc prev >/dev/null ;;
+    "play / pause")         mpc toggle >/dev/null ;;
+    "stop")                 mpc stop >/dev/null ;;
+    "toggle random")        mpc random >/dev/null ;;
+    "toggle repeat")        mpc repeat >/dev/null ;;
+    "toggle consume")       mpc consume >/dev/null ;;
+    "toggle single")        mpc single >/dev/null ;;
+    "update database")      mpc update --wait >/dev/null ;;
+esac

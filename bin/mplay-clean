@@ -1,0 +1,86 @@
+#!/bin/bash
+# Repair the music library: re-file misplaced singles, drop broken symlinks, prune empty dirs.
+# Safe to run repeatedly. Prints a short summary at the end.
+LIBRARY="$HOME/Music/flac-library"
+AUDIO_EXTS='\.(flac|mp3|m4a|opus|ogg|wav|aac)$'
+
+[ ! -d "$LIBRARY" ] && { echo "No library at $LIBRARY"; exit 1; }
+
+# Safety: refuse to run if the SMB share isn't mounted — otherwise every symlink
+# would appear broken and we'd nuke the whole tree.
+if [ ! -d "/Volumes/Media/downloads" ]; then
+    echo "abort: /Volumes/Media/downloads is not mounted — symlinks would look broken"
+    exit 1
+fi
+
+moved=0
+broken=0
+emptied=0
+
+# 1. Re-file top-level folders that are actually single misplaced tracks
+find "$LIBRARY" -mindepth 1 -maxdepth 1 -type d -print0 | while IFS= read -r -d '' top; do
+    base=$(basename "$top")
+    # count audio files recursively under this folder
+    files=$(find "$top" \( -type f -o -type l \) | grep -iE "${AUDIO_EXTS}" || true)
+    n=$(printf '%s\n' "$files" | grep -c .)
+
+    # only re-file when the top-level dir has no album-level subdirs
+    # i.e. files sit directly inside `$top` (not $top/album/file.flac)
+    has_album_sub=0
+    while IFS= read -r f; do
+        [ -z "$f" ] && continue
+        parent=$(dirname "$f")
+        [ "$parent" = "$top" ] || has_album_sub=1
+    done <<< "$files"
+
+    [ "$n" -eq 0 ] && continue
+    [ "$has_album_sub" -eq 1 ] && continue
+    # if there are several tracks and the dir name plausibly matches their album, leave it
+    # (heuristic: 1-2 tracks at top-level = misplaced single; more = treat as album folder)
+    [ "$n" -gt 2 ] && continue
+
+    while IFS= read -r f; do
+        [ -z "$f" ] && continue
+        META=$(ffprobe -v quiet -show_entries format_tags=artist,album,album_artist -of csv=p=0:s='|' "$f" 2>/dev/null)
+        ARTIST=$(printf '%s' "$META" | cut -d'|' -f1 | tr '/' '-' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+        ALBUM=$(printf '%s' "$META"  | cut -d'|' -f2 | tr '/' '-' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+        ALBUM_ARTIST=$(printf '%s' "$META" | cut -d'|' -f3 | tr '/' '-' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+        [ -n "$ALBUM_ARTIST" ] && ARTIST="$ALBUM_ARTIST"
+
+        # only act if the tag artist differs from the folder name (real misplacement)
+        if [ -n "$ARTIST" ] && [ "$ARTIST" != "$base" ]; then
+            [ -z "$ALBUM" ] && ALBUM="Unknown Album"
+            target="$LIBRARY/$ARTIST/$ALBUM"
+            mkdir -p "$target"
+            name=$(basename "$f")
+            if [ ! -e "$target/$name" ]; then
+                # if it's a symlink, recreate it pointing to the same source
+                if [ -L "$f" ]; then
+                    src=$(readlink "$f")
+                    ln -s "$src" "$target/$name"
+                    rm "$f"
+                else
+                    mv "$f" "$target/$name"
+                fi
+                moved=$((moved + 1))
+                echo "moved: $base/$name -> $ARTIST/$ALBUM/$name"
+            fi
+        fi
+    done <<< "$files"
+done
+
+# 2. Drop broken symlinks
+while IFS= read -r -d '' link; do
+    rm "$link"
+    broken=$((broken + 1))
+done < <(find "$LIBRARY" -type l ! -exec test -e {} \; -print0)
+
+# 3. Prune empty dirs only (safe — won't touch anything containing files)
+emptied=$(find "$LIBRARY" -mindepth 1 -type d -empty -print -delete 2>/dev/null | wc -l | tr -d ' ')
+
+if pgrep -x mpd >/dev/null; then
+    mpc update --wait >/dev/null 2>&1
+fi
+
+echo "---"
+echo "moved: $moved   broken-symlinks-removed: $broken   empty-dirs-removed: $emptied"

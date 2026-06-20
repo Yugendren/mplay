@@ -1,0 +1,27 @@
+#!/bin/bash
+# Vim-style track picker. fzf over the entire MPD library.
+# Tab multi-selects, Enter clears the queue + queues selection + plays.
+set -e
+
+pick=$(mpc listall 2>/dev/null | fzf \
+    --multi \
+    --reverse \
+    --height=100% \
+    --border=rounded \
+    --border-label=' search ' \
+    --info=inline \
+    --prompt='  ' \
+    --pointer='▍' \
+    --marker='+' \
+    --header='enter: play   tab: multi-select   esc: cancel' \
+    --preview-window='right:40%:wrap:border-left' \
+    --preview='mpc --format "%artist% — %album%\n%title%" search file {}' \
+) || exit 0
+
+[ -z "$pick" ] && exit 0
+
+mpc clear >/dev/null
+while IFS= read -r line; do
+    [ -n "$line" ] && mpc add "$line" >/dev/null
+done <<< "$pick"
+mpc play >/dev/null

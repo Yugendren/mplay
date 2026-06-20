@@ -1,0 +1,12 @@
+# In the playlist (queue) screen, backspace removes the highlighted song.
+# In the browser screen, the same key still jumps to the parent directory —
+# ncmpcpp tries actions in order and only applies the one that fits the current screen.
+def_key "backspace"
+  delete_playlist_items
+  jump_to_parent_directory
+
+# r toggles shuffle (random) — was default repeat; moved to capital R.
+def_key "r"
+  toggle_random
+def_key "R"
+  toggle_repeat

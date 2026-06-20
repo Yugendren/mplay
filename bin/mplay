@@ -1,0 +1,38 @@
+#!/bin/bash
+# Launch mpd + a tmux session with ncmpcpp on the left and mplay-art on the right.
+# Bindings (Alt-key, no prefix needed):
+#   M-/  fullscreen fzf track picker (mplay-find)
+#   M-s  save current queue as a playlist
+#   M-l  load a saved playlist
+#   M-a  append currently-playing song to a playlist
+#   M-d  delete a playlist
+#   M-q  quit the whole mplay session
+
+if ! pgrep -x mpd >/dev/null; then
+    mpd ~/.mpd/mpd.conf 2>/dev/null
+    sleep 0.5
+    mpc update --wait >/dev/null 2>&1
+fi
+
+# default to in-order playback (random/repeat/consume off)
+mpc random off >/dev/null 2>&1
+mpc repeat off >/dev/null 2>&1
+mpc consume off >/dev/null 2>&1
+
+mplay-sync >/dev/null 2>&1 &
+
+SESSION=mplay
+TMUX_CONF="$HOME/.config/mplay/tmux.conf"
+
+tmux kill-session -t "$SESSION" 2>/dev/null
+
+# wrap ncmpcpp so the entire session dies when it exits (q in ncmpcpp quits everything)
+tmux -f "$TMUX_CONF" new-session -d -s "$SESSION" \
+    -x "$(tput cols)" -y "$(tput lines)" \
+    "ncmpcpp; tmux kill-session -t $SESSION"
+
+tmux split-window -h -l 48% -t "$SESSION:0" 'mplay-art'
+tmux select-pane -t "$SESSION:0.0"
+tmux attach -t "$SESSION"
+
+mpd --kill 2>/dev/null

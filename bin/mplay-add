@@ -1,0 +1,67 @@
+#!/bin/bash
+# Browse SMB downloads and add albums to music library
+DOWNLOADS="/Volumes/Media/downloads"
+LIBRARY="$HOME/Music/flac-library"
+REMOTE_SMB="smb://media@192.168.1.80/Media"
+
+# Check SMB is mounted, try to mount if not
+if [ ! -d "$DOWNLOADS" ]; then
+    echo "Media not detected. Attempting to mount..."
+    osascript -e "mount volume \"$REMOTE_SMB\"" >/dev/null 2>&1
+    # Wait up to 10 seconds for mount
+    for i in {1..10}; do
+        [ -d "$DOWNLOADS" ] && break
+        sleep 1
+    done
+fi
+
+if [ ! -d "$DOWNLOADS" ]; then
+    echo "Error: SMB share not mounted at $DOWNLOADS"
+    exit 1
+fi
+
+# Find folders containing FLAC files, exclude already-linked ones
+EXISTING=$(ls "$LIBRARY" 2>/dev/null | while read -r name; do
+    readlink "$LIBRARY/$name" 2>/dev/null
+done)
+
+ALBUMS=()
+while IFS= read -r dir; do
+    # Skip if already in library
+    if echo "$EXISTING" | grep -qF "$dir"; then
+        continue
+    fi
+    ALBUMS+=("$dir")
+done < <(find "$DOWNLOADS" -name "*.flac" -print0 | xargs -0 -n1 dirname | sort -u)
+
+if [ ${#ALBUMS[@]} -eq 0 ]; then
+    echo "No new albums found in $DOWNLOADS"
+    exit 0
+fi
+
+# Show fuzzy finder to pick albums (multi-select with Tab)
+SELECTED=$(printf '%s\n' "${ALBUMS[@]}" | sed "s|$DOWNLOADS/||" | \
+    fzf --multi --prompt="Select albums to add (Tab=multi-select, Enter=confirm): " \
+        --header="Albums not yet in library" \
+        --preview="ls '${DOWNLOADS}/{}'" \
+        --height=80%)
+
+[ -z "$SELECTED" ] && { echo "Nothing selected."; exit 0; }
+
+# Create symlinks for selected albums
+while IFS= read -r album; do
+    FULL_PATH="$DOWNLOADS/$album"
+    # Clean name: strip bracketed dates/tags, trim whitespace
+    CLEAN_NAME=$(echo "$album" | sed -E 's/^\[[^]]*\] *//; s/\[FLAC[^]]*\]//g' | xargs)
+
+    echo "Adding: $CLEAN_NAME"
+    ln -s "$FULL_PATH" "$LIBRARY/$CLEAN_NAME"
+done <<< "$SELECTED"
+
+# Update mpd database
+if pgrep -x mpd > /dev/null; then
+    mpc update --wait > /dev/null 2>&1
+    echo "Library updated."
+fi
+
+echo "Done!"

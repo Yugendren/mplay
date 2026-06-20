@@ -1,0 +1,118 @@
+#!/bin/bash
+# Album art viewer with audio info — run in a separate Ghostty pane
+# Usage: mplay-art [--ascii]
+#   (default)  Kitty protocol image (native Ghostty, full quality)
+#   --ascii    Braille dot art with truecolor colors
+MUSIC_DIR="$HOME/Music/flac-library"
+COVER="/tmp/ncmpcpp_cover.jpg"
+
+USE_ASCII=false
+[[ "$1" == "--ascii" ]] && USE_ASCII=true
+
+get_system_output() {
+    local audio_info
+    audio_info=$(system_profiler SPAudioDataType 2>/dev/null)
+
+    local device_block
+    device_block=$(echo "$audio_info" | awk '/^        [^ ]/{device=$0} /Default Output Device: Yes/{found=1} /Current SampleRate:/{if(found){print device, $NF; exit}}')
+
+    local device_name sample_rate
+    device_name=$(echo "$device_block" | sed 's/[0-9]*$//' | xargs | sed 's/:$//')
+    sample_rate=$(echo "$device_block" | grep -oE '[0-9]+$')
+
+    echo "$sample_rate $device_name"
+}
+
+show_cover() {
+    local SONG
+    SONG=$(mpc current -f "%file%" 2>/dev/null)
+    clear
+
+    if [ -z "$SONG" ]; then
+        echo "No song playing"
+        return
+    fi
+
+    local SONG_PATH="$MUSIC_DIR/$SONG"
+
+    # Extract cover art
+    ffmpeg -y -i "$SONG_PATH" -an -vcodec mjpeg -q:v 2 "$COVER" 2>/dev/null
+
+    # Fallback to folder images
+    if [ ! -s "$COVER" ]; then
+        local SONG_DIR="$MUSIC_DIR/$(dirname "$SONG")"
+        for img in "$SONG_DIR"/cover.{jpg,png,jpeg} "$SONG_DIR"/folder.{jpg,png,jpeg} "$SONG_DIR"/*.{jpg,png,jpeg}; do
+            if [ -f "$img" ]; then
+                cp "$img" "$COVER"
+                break
+            fi
+        done
+    fi
+
+    # Reserve 4 lines for text info below. Query the terminal directly —
+    # $LINES/$COLUMNS aren't reliably set inside a tmux pane started with a command.
+    local TERM_ROWS TERM_COLS
+    TERM_ROWS=$(tput lines 2>/dev/null || echo 30)
+    TERM_COLS=$(tput cols 2>/dev/null || echo 80)
+    # Don't compute a target size — let chafa fill the pane naturally.
+    # Resize the tmux pane (M-Left/M-Right or mouse-drag) to adjust the image.
+    if [ -s "$COVER" ]; then
+        if $USE_ASCII; then
+            chafa --format=symbols --symbols braille \
+                --scale max --work 9 \
+                --animate=off "$COVER" 2>/dev/null
+        else
+            chafa --format=kitty \
+                --scale max --work 9 \
+                --animate=off "$COVER" 2>/dev/null
+        fi
+    else
+        echo "[No cover art]"
+    fi
+
+    # Track info
+    local ARTIST TITLE ALBUM
+    ARTIST=$(mpc current -f "%artist%" 2>/dev/null)
+    TITLE=$(mpc current -f "%title%" 2>/dev/null)
+    ALBUM=$(mpc current -f "%album%" 2>/dev/null)
+    # one compact line: Artist — Title · Album
+    echo "$ARTIST — $TITLE  ·  $ALBUM"
+
+    # Audio quality info
+    local TRACK_SR TRACK_BITS SYS_INFO SYS_SR SYS_DEV
+    local PROBE_OUT
+    PROBE_OUT=$(ffprobe -v quiet -select_streams a:0 -show_entries stream=sample_rate,bits_per_raw_sample -of csv=p=0:s='|' "$SONG_PATH" 2>/dev/null)
+    TRACK_SR=$(echo "$PROBE_OUT" | cut -d'|' -f1)
+    TRACK_BITS=$(echo "$PROBE_OUT" | cut -d'|' -f2)
+
+    SYS_INFO=$(get_system_output)
+    SYS_SR=$(echo "$SYS_INFO" | awk '{print $1}')
+    SYS_DEV=$(echo "$SYS_INFO" | cut -d' ' -f2-)
+
+    # Default to 0 if empty to avoid bc errors
+    local T_SR=${TRACK_SR:-0}
+    local S_SR=${SYS_SR:-0}
+
+    local TRACK_KHZ=$(echo "scale=1; $T_SR / 1000" | bc 2>/dev/null || echo "0")
+    local SYS_KHZ=$(echo "scale=1; $S_SR / 1000" | bc 2>/dev/null || echo "0")
+
+    local STATUS
+    if [[ -n "$TRACK_SR" && -n "$SYS_SR" && "$TRACK_SR" == "$SYS_SR" ]]; then
+        STATUS="\033[32mMATCHED\033[0m"
+    elif [[ -n "$TRACK_SR" && -n "$SYS_SR" ]]; then
+        STATUS="\033[31mMISMATCH — track is ${TRACK_KHZ}kHz but output is ${SYS_KHZ}kHz\033[0m"
+    else
+        STATUS="\033[33mUNKNOWN\033[0m"
+    fi
+
+    printf "%skHz / %sbit FLAC  ·  %s @ %skHz  ·  %b\n" "$TRACK_KHZ" "${TRACK_BITS:-?}" "${SYS_DEV:-Unknown}" "$SYS_KHZ" "$STATUS"
+    }
+
+
+# Handle terminal resize
+trap 'show_cover' WINCH
+
+show_cover
+mpc idleloop player 2>/dev/null | while read -r _; do
+    show_cover
+done

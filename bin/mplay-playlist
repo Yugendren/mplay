@@ -1,0 +1,84 @@
+#!/bin/bash
+# Simple playlist ops over MPD: save / load / add-current / delete.
+# Playlists are .m3u files in ~/.mpd/playlists/ (managed by mpc).
+PLAYLIST_DIR="$HOME/.mpd/playlists"
+mkdir -p "$PLAYLIST_DIR"
+
+pick_playlist() {
+    mpc lsplaylists 2>/dev/null | fzf --reverse --height=80% --prompt='playlist > '
+}
+
+prompt_name() {
+    if [ -n "$1" ]; then
+        printf '%s' "$1"
+        return
+    fi
+    printf 'name: ' >/dev/tty
+    read -r name </dev/tty
+    printf '%s' "$name"
+}
+
+cmd_save() {
+    local name; name=$(prompt_name "$1")
+    [ -z "$name" ] && { echo "no name given"; exit 1; }
+    # mpc save errors if it exists — remove first
+    mpc rm "$name" >/dev/null 2>&1
+    if mpc save "$name"; then
+        echo "saved current queue to $name"
+    else
+        echo "save failed"
+        exit 1
+    fi
+}
+
+cmd_load() {
+    local name="$1"
+    [ -z "$name" ] && name=$(pick_playlist)
+    [ -z "$name" ] && exit 0
+    mpc clear >/dev/null
+    mpc load "$name" >/dev/null
+    mpc play >/dev/null
+    echo "playing $name"
+}
+
+cmd_add() {
+    local name="$1"
+    [ -z "$name" ] && name=$(pick_playlist)
+    [ -z "$name" ] && exit 0
+    local current; current=$(mpc current -f "%file%")
+    [ -z "$current" ] && { echo "nothing playing"; exit 1; }
+    # append to the .m3u directly (mpc has no append-to-stored-playlist command)
+    printf '%s\n' "$current" >> "$PLAYLIST_DIR/${name}.m3u"
+    echo "added: $current -> $name"
+}
+
+cmd_delete() {
+    local name="$1"
+    [ -z "$name" ] && name=$(pick_playlist)
+    [ -z "$name" ] && exit 0
+    mpc rm "$name" && echo "deleted $name"
+}
+
+cmd_list() {
+    mpc lsplaylists
+}
+
+case "${1:-}" in
+    save)   shift; cmd_save "$@" ;;
+    load)   shift; cmd_load "$@" ;;
+    add)    shift; cmd_add "$@" ;;
+    delete|rm) shift; cmd_delete "$@" ;;
+    list|ls) cmd_list ;;
+    ""|help|-h|--help)
+        cat <<EOF
+mplay-playlist — simple MPD playlist ops
+
+  save [NAME]    save current queue (prompts for name if omitted)
+  load [NAME]    clear queue, load playlist, play (fzf-picks if omitted)
+  add  [NAME]    append currently-playing song to playlist (fzf-picks if omitted)
+  delete [NAME]  remove a playlist (fzf-picks if omitted)
+  list           list playlists
+EOF
+        ;;
+    *) echo "unknown subcommand: $1" >&2; exit 1 ;;
+esac
