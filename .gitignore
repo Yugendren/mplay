@@ -1,2 +1,12 @@
 .DS_Store
 *.swp
+
+# Machine-specific configs (seeded from the .example templates by install.sh).
+config/mplay/mplay.conf
+config/mplay/artist-aliases.conf
+
+# Compiled artifacts.
+bin/mplay-srate
+
+# Logs.
+*.log

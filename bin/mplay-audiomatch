@@ -1,0 +1,30 @@
+#!/bin/bash
+# Follow the playing track's sample rate: whenever mpd changes song/state, read
+# the current file's sample rate and tell the default output device to match
+# (via mplay-srate), so CoreAudio stops resampling. Runs as a background daemon
+# launched by `mplay`; exits cleanly when mpd goes away.
+
+MPLAY_CONF="${MPLAY_CONF:-$HOME/.config/mplay/mplay.conf}"
+# shellcheck source=/dev/null
+[ -f "$MPLAY_CONF" ] && . "$MPLAY_CONF"
+LIBRARY="${LIBRARY:-$HOME/Music/flac-library}"
+
+last=""
+
+apply() {
+    # mpc prints the file path relative to mpd's music_directory (== $LIBRARY).
+    local f rate
+    f=$(mpc current -f %file% 2>/dev/null)
+    [ -z "$f" ] && return                     # nothing playing
+    [ "$f" = "$last" ] && return              # same track, e.g. a pause/resume
+    last="$f"
+    rate=$(ffprobe -v quiet -select_streams a:0 \
+        -show_entries stream=sample_rate -of csv=p=0 "$LIBRARY/$f" 2>/dev/null)
+    [ -n "$rate" ] && mplay-srate "$rate" >/dev/null 2>&1
+}
+
+apply                                          # match whatever is playing at launch
+while pgrep -x mpd >/dev/null; do
+    mpc idle player >/dev/null 2>&1 || sleep 1 # block until next player event
+    apply
+done

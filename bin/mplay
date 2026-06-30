@@ -1,12 +1,11 @@
 #!/bin/bash
 # Launch mpd + a tmux session with ncmpcpp on the left and mplay-art on the right.
-# Bindings (Alt-key, no prefix needed):
-#   M-/  fullscreen fzf track picker (mplay-find)
-#   M-s  save current queue as a playlist
-#   M-l  load a saved playlist
-#   M-a  append currently-playing song to a playlist
-#   M-d  delete a playlist
-#   M-q  quit the whole mplay session
+# In-session keys (no prefix needed):
+#   /    fuzzy track search (mplay-find)
+#   :    command palette (mplay-cmd: playlists, playback, queue)
+#   ?    keybinding cheatsheet (mplay-help)
+# Background: mplay-sync ingests new music; mplay-audiomatch matches the output
+# device sample rate to each track.
 
 if ! pgrep -x mpd >/dev/null; then
     mpd ~/.mpd/mpd.conf 2>/dev/null
@@ -14,25 +13,34 @@ if ! pgrep -x mpd >/dev/null; then
     mpc update --wait >/dev/null 2>&1
 fi
 
-# default to in-order playback (random/repeat/consume off)
+# default to in-order playback (random/repeat/consume/single off)
+# single=on is the sneaky one: it plays the current song then STOPS instead of
+# advancing — looks like "autoplay is broken". Reset it every launch.
 mpc random off >/dev/null 2>&1
 mpc repeat off >/dev/null 2>&1
 mpc consume off >/dev/null 2>&1
+mpc single off >/dev/null 2>&1
 
 mplay-sync >/dev/null 2>&1 &
+# Match the output device's sample rate to whatever is playing (kHz fix).
+mplay-audiomatch >/dev/null 2>&1 &
 
 SESSION=mplay
 TMUX_CONF="$HOME/.config/mplay/tmux.conf"
+# Run mplay on its own tmux socket so its config (status off, prefix C-Space, etc.)
+# never leaks into the default tmux server used by normal sessions.
+TMUX="tmux -L mplay"
 
-tmux kill-session -t "$SESSION" 2>/dev/null
+$TMUX kill-session -t "$SESSION" 2>/dev/null
 
 # wrap ncmpcpp so the entire session dies when it exits (q in ncmpcpp quits everything)
-tmux -f "$TMUX_CONF" new-session -d -s "$SESSION" \
+$TMUX -f "$TMUX_CONF" new-session -d -s "$SESSION" \
     -x "$(tput cols)" -y "$(tput lines)" \
-    "ncmpcpp; tmux kill-session -t $SESSION"
+    "ncmpcpp; tmux -L mplay kill-session -t $SESSION"
 
-tmux split-window -h -l 48% -t "$SESSION:0" 'mplay-art'
-tmux select-pane -t "$SESSION:0.0"
-tmux attach -t "$SESSION"
+$TMUX split-window -h -l 48% -t "$SESSION:0" 'mplay-art'
+$TMUX select-pane -t "$SESSION:0.0"
+$TMUX attach -t "$SESSION"
 
+pkill -f mplay-audiomatch 2>/dev/null
 mpd --kill 2>/dev/null

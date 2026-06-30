@@ -1,0 +1,20 @@
+# mplay machine-specific config — sourced by mplay-lib.sh / mplay-audiomatch.
+# Copy this to ~/.config/mplay/mplay.conf and edit the values for your setup.
+# install.sh does this copy automatically if the real file is missing.
+
+# Local library that mpd indexes (must match music_directory in mpd.conf).
+LIBRARY="$HOME/Music/flac-library"
+
+# Source folder that mplay-sync ingests from (an SMB mount, external disk, etc.).
+DOWNLOADS="/Volumes/Media/downloads"
+
+# Remote share to auto-mount if DOWNLOADS is missing. Leave empty to disable.
+# Format: smb://user@HOST/Share
+REMOTE_SMB="smb://user@HOST/Share"
+
+# Artist alias table ("Wrong Name = Canonical" lines).
+ARTIST_ALIASES="$HOME/.config/mplay/artist-aliases.conf"
+
+# Optional: override the non-music release-name blocklist (ERE). Leave unset to
+# use the built-in default in mplay-lib.sh.
+# BLOCK_RE='(WEB-DL|BDRip|BluRay|HEVC|x265|x264|1080p|2160p)'

@@ -1,67 +1,51 @@
 #!/bin/bash
-# Browse SMB downloads and add albums to music library
-DOWNLOADS="/Volumes/Media/downloads"
-LIBRARY="$HOME/Music/flac-library"
-REMOTE_SMB="smb://media@192.168.1.80/Media"
+# Browse Media downloads and add SPECIFIC folders to the library.
+# Uses the exact same organizing logic as `mplay-sync` (process_top_dir from
+# mplay-lib.sh): tag-based artist/album hierarchy, disc collapse, aliases,
+# cover art. Pick one or many top-level folders with fzf (Tab = multi-select).
 
-# Check SMB is mounted, try to mount if not
-if [ ! -d "$DOWNLOADS" ]; then
-    echo "Media not detected. Attempting to mount..."
-    osascript -e "mount volume \"$REMOTE_SMB\"" >/dev/null 2>&1
-    # Wait up to 10 seconds for mount
-    for i in {1..10}; do
-        [ -d "$DOWNLOADS" ] && break
-        sleep 1
-    done
-fi
+source "$HOME/.local/bin/mplay-lib.sh"
 
-if [ ! -d "$DOWNLOADS" ]; then
+if ! ensure_mounted; then
     echo "Error: SMB share not mounted at $DOWNLOADS"
     exit 1
 fi
+mkdir -p "$LIBRARY"
 
-# Find folders containing FLAC files, exclude already-linked ones
-EXISTING=$(ls "$LIBRARY" 2>/dev/null | while read -r name; do
-    readlink "$LIBRARY/$name" 2>/dev/null
-done)
+# Build the shared linked-index once: used both to hide already-present folders
+# below and (by process_top_dir) to skip already-linked files during the add.
+build_linked_index
+LINKED="$LINKED_INDEX"
 
-ALBUMS=()
-while IFS= read -r dir; do
-    # Skip if already in library
-    if echo "$EXISTING" | grep -qF "$dir"; then
+# Build the list of top-level folders that contain audio and aren't in the library yet.
+NEW=()
+while IFS= read -r -d '' top; do
+    find -E "$top" -type f -iregex ".*${AUDIO_EXTS}" -print -quit 2>/dev/null | grep -q . || continue
+    if [ -n "$LINKED" ] && grep -qF "$top/" <<< "$LINKED"; then
         continue
     fi
-    ALBUMS+=("$dir")
-done < <(find "$DOWNLOADS" -name "*.flac" -print0 | xargs -0 -n1 dirname | sort -u)
+    NEW+=("$(basename "$top")")
+done < <(find "$DOWNLOADS" -mindepth 1 -maxdepth 1 -type d -print0 | sort -z)
 
-if [ ${#ALBUMS[@]} -eq 0 ]; then
-    echo "No new albums found in $DOWNLOADS"
+if [ ${#NEW[@]} -eq 0 ]; then
+    echo "No new folders found in $DOWNLOADS"
     exit 0
 fi
 
-# Show fuzzy finder to pick albums (multi-select with Tab)
-SELECTED=$(printf '%s\n' "${ALBUMS[@]}" | sed "s|$DOWNLOADS/||" | \
-    fzf --multi --prompt="Select albums to add (Tab=multi-select, Enter=confirm): " \
-        --header="Albums not yet in library" \
+# Fuzzy picker (multi-select with Tab)
+SELECTED=$(printf '%s\n' "${NEW[@]}" | \
+    fzf --multi --prompt="Select folders to add (Tab=multi-select, Enter=confirm): " \
+        --header="Folders not yet in library" \
         --preview="ls '${DOWNLOADS}/{}'" \
         --height=80%)
 
 [ -z "$SELECTED" ] && { echo "Nothing selected."; exit 0; }
 
-# Create symlinks for selected albums
-while IFS= read -r album; do
-    FULL_PATH="$DOWNLOADS/$album"
-    # Clean name: strip bracketed dates/tags, trim whitespace
-    CLEAN_NAME=$(echo "$album" | sed -E 's/^\[[^]]*\] *//; s/\[FLAC[^]]*\]//g' | xargs)
-
-    echo "Adding: $CLEAN_NAME"
-    ln -s "$FULL_PATH" "$LIBRARY/$CLEAN_NAME"
+# Run each selected folder through the shared organizing logic
+while IFS= read -r name; do
+    echo "Adding: $name"
+    process_top_dir "$DOWNLOADS/$name"
 done <<< "$SELECTED"
 
-# Update mpd database
-if pgrep -x mpd > /dev/null; then
-    mpc update --wait > /dev/null 2>&1
-    echo "Library updated."
-fi
-
+mpd_update --wait
 echo "Done!"

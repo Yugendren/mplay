@@ -1,0 +1,40 @@
+#!/bin/bash
+# Keybinding cheatsheet for the mplay session. Shown in a tmux popup (bound to
+# '?' in tmux.conf); waits for a keypress, then closes.
+
+cat <<'EOF'
+
+  mplay — keys
+
+  POPUPS (no prefix needed)
+    /            fuzzy track search over the whole library
+    :            command palette (playlists, playback, queue)
+    ?            this help
+
+  PLAYBACK (ncmpcpp)
+    space        add highlighted item to the queue
+    enter        play highlighted item
+    P            pause / resume
+    >   <        next / previous track
+    f   b        seek forward / back
+    +   -        volume up / down
+    s            stop
+    r            toggle random
+    R            toggle repeat
+
+  NAVIGATION (ncmpcpp)
+    j / k        down / up        (or arrow keys)
+    backspace    up a directory / delete from playlist
+    1            playlist          2  browse library
+    4            search screen     u  update database
+    q            quit mplay
+
+  COMMAND PALETTE ( : ) includes
+    save / load / add-to / delete playlist
+    clear queue, shuffle queue, next, prev, play-pause, stop
+    toggle random / repeat / consume / single, update database
+
+  press any key to close
+EOF
+
+read -rsn1 _ 2>/dev/null

@@ -2,4 +2,5 @@
 # Comments start with #. Whitespace around = is ignored. Case-insensitive match.
 # Applied AFTER the folder-first rule, so use this for tags that survive that.
 
-Jay-Z & Linkin Park = Linkin Park
+# Example:
+# Jay-Z & Linkin Park = Linkin Park
