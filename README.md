@@ -1,5 +1,7 @@
 # mplay
 
+> A tmux music player for macOS: mpd + ncmpcpp with live cover art, fuzzy search, and automatic DAC sample-rate matching.
+
 A small Bash suite that turns [`mpd`](https://www.musicpd.org/) +
 [`ncmpcpp`](https://github.com/ncmpcpp/ncmpcpp) into a single, tmux-based music
 player for macOS: ncmpcpp on the left, live cover art on the right, a fuzzy
@@ -44,41 +46,35 @@ with the Xcode command-line tools (`xcode-select --install`).
 git clone https://github.com/Yugendren/mplay.git
 cd mplay
 ./install.sh
-```
-
-`install.sh` **symlinks** the scripts and generic configs into `~/.local/bin`
-and `~/.config` (the repo stays the single source of truth — edit a file here
-and the installed command changes), compiles `mplay-srate`, and seeds your
-machine-specific config from the templates.
-
-Then edit your config and an `mpd.conf`:
-
-```sh
-$EDITOR ~/.config/mplay/mplay.conf     # library path, downloads folder, SMB share
-```
-
-Make sure `~/.mpd/mpd.conf` points `music_directory` at the same `LIBRARY` path
-and uses the CoreAudio output:
-
-```
-music_directory "/Users/you/Music/flac-library"
-audio_output {
-    type "osx"
-    name "CoreAudio"
-    mixer_type "software"
-}
-```
-
-Finally:
-
-```sh
 mplay
 ```
 
+That's it — **no config editing required.** On first launch `mplay` runs a
+one-time setup wizard that asks (with a fuzzy folder picker) where your music
+lives, then writes everything for you:
+
+```
+┌─ mplay setup ─────────────────────────────────────────┐
+│  Where is your music library?                          │
+│  > flac                                                │
+│    /Users/you/Music/flac-library      ◀ type, ↵ select │
+└────────────────────────────────────────────────────────┘
+```
+
+It generates `~/.config/mplay/mplay.conf`, `~/.mpd/mpd.conf` (CoreAudio output),
+and `~/.config/ncmpcpp/config` — all pointed at the folder you picked. Your
+answers are saved permanently; re-run the wizard any time with `mplay --setup`.
+
+`install.sh` itself just **symlinks** the scripts and path-independent configs
+into `~/.local/bin` and `~/.config` (the repo stays the single source of truth —
+edit a file here and the installed command changes) and compiles `mplay-srate`.
+
+> Scriptable / headless: `mplay-setup --library ~/Music [--downloads DIR] [--smb smb://user@host/share]`
+
 ## Configuration
 
-`~/.config/mplay/mplay.conf` (created from `mplay.conf.example`, **not** tracked
-by git) holds everything machine-specific:
+`~/.config/mplay/mplay.conf` (written by the setup wizard, **not** tracked by
+git) holds everything machine-specific. You rarely need to touch it by hand:
 
 | Variable        | Meaning                                                        |
 |-----------------|----------------------------------------------------------------|

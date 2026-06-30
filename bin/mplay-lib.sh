@@ -28,9 +28,13 @@ AUDIO_EXTS='\.(flac|mp3|m4a|opus|ogg|wav|aac)$'
 # Overridable via BLOCK_RE in mplay.conf.
 BLOCK_RE="${BLOCK_RE:-(WEB-DL|BDRip|BluRay|HEVC|x265|x264|1080p|2160p)}"
 
-# Ensure the SMB share is mounted. Returns 0 if available, 1 otherwise.
+# Ensure the source folder is available (mounting the SMB share if needed).
+# Returns 0 if available, 1 otherwise. With no DOWNLOADS configured the ingest
+# features are simply disabled (a valid setup for a purely local library).
 ensure_mounted() {
+    [ -z "$DOWNLOADS" ] && return 1
     [ -d "$DOWNLOADS" ] && return 0
+    [ -z "$REMOTE_SMB" ] && return 1
     osascript -e "mount volume \"$REMOTE_SMB\"" >/dev/null 2>&1
     local i
     for i in {1..10}; do

@@ -1,0 +1,135 @@
+#!/bin/bash
+# First-run setup wizard. Asks (with a fuzzy folder picker) where your music
+# lives, then writes every config a fresh install needs so you never edit a file
+# by hand:
+#   ~/.config/mplay/mplay.conf     library / source-folder settings
+#   ~/.mpd/mpd.conf                mpd daemon config (music_directory + CoreAudio)
+#   ~/.config/ncmpcpp/config       ncmpcpp UI config (mpd_music_dir)
+#
+# Run automatically by `mplay` on first launch; re-run any time with `mplay --setup`.
+#
+# Non-interactive / scriptable:
+#   mplay-setup --library DIR [--downloads DIR] [--smb smb://user@host/share]
+set -e
+
+# --- locate the repo (this script is symlinked into ~/.local/bin) ---
+SELF="${BASH_SOURCE[0]}"
+[ -L "$SELF" ] && SELF="$(readlink "$SELF")"
+REPO="$(cd "$(dirname "$SELF")/.." && pwd)"
+
+# --- destinations (env-overridable, mainly for testing) ---
+MPLAY_CONF="${MPLAY_CONF:-$HOME/.config/mplay/mplay.conf}"
+MPD_CONF="${MPD_CONF:-$HOME/.mpd/mpd.conf}"
+MPD_HOME="$(dirname "$MPD_CONF")"
+NCMPCPP_CONF="${NCMPCPP_CONF:-$HOME/.config/ncmpcpp/config}"
+ALIASES="${ARTIST_ALIASES:-$HOME/.config/mplay/artist-aliases.conf}"
+
+MPD_TMPL="$REPO/config/mpd/mpd.conf.example"
+NCM_TMPL="$REPO/config/ncmpcpp/config.example"
+
+# --- args ---
+LIBRARY="" DOWNLOADS="" REMOTE_SMB="" INTERACTIVE=1
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --library)   LIBRARY="$2"; INTERACTIVE=0; shift 2 ;;
+        --downloads) DOWNLOADS="$2"; shift 2 ;;
+        --smb)       REMOTE_SMB="$2"; shift 2 ;;
+        *) echo "mplay-setup: unknown arg: $1" >&2; exit 2 ;;
+    esac
+done
+
+say() { printf '%s\n' "$*"; }
+die() { printf '\n  setup cancelled — %s\n' "$*" >&2; exit 1; }
+
+# Fuzzy directory picker: stream absolute dir paths under $HOME (+ /Volumes) into
+# fzf. Pruning keeps it fast and free of system noise. Esc falls back to typing
+# a path. Echoes the chosen absolute directory.
+pick_dir() {
+    local label="$1" picked roots=("$HOME")
+    [ -d /Volumes ] && roots+=(/Volumes)
+    picked=$(
+        find "${roots[@]}" -maxdepth 6 \
+            \( -name '.*' -o -name 'node_modules' -o -name 'Library' \
+               -o -name '*.app' -o -name '*.photoslibrary' \) -prune -o -type d -print 2>/dev/null \
+        | fzf --reverse --height=100% --border=rounded \
+              --border-label=" $label — type to filter, enter to select " \
+              --prompt='  ' --pointer='▍' \
+              --preview='ls -1p {} 2>/dev/null | head -60' \
+              --preview-window='right:45%:border-left'
+    ) || picked=""
+    if [ -z "$picked" ]; then
+        # escape hatch: let the user type a path
+        printf '  %s (full path): ' "$label" >&2
+        read -r picked </dev/tty || true
+        picked="${picked/#\~/$HOME}"
+    fi
+    printf '%s' "$picked"
+}
+
+# --- collect settings ---
+if [ "$INTERACTIVE" = 1 ]; then
+    say ""
+    say "  ┌─ mplay setup ─────────────────────────────────────────┐"
+    say "  │  Let's point mplay at your music. Nothing to edit by   │"
+    say "  │  hand — your answers are saved permanently.            │"
+    say "  └────────────────────────────────────────────────────────┘"
+    say ""
+    say "  1) Where is your music library?  (the folder mpd will index)"
+    LIBRARY="$(pick_dir 'music library')"
+    [ -z "$LIBRARY" ] && die "no library folder chosen"
+    [ -d "$LIBRARY" ] || die "not a directory: $LIBRARY"
+
+    say ""
+    say "  Chose: $LIBRARY"
+    say ""
+    printf "  2) Ingest from a separate 'downloads' folder too? [y/N] "
+    read -r ans </dev/tty || ans=""
+    if [[ "$ans" =~ ^[Yy] ]]; then
+        DOWNLOADS="$(pick_dir 'downloads / source folder')"
+        printf "     SMB share to auto-mount it (optional, blank to skip): "
+        read -r REMOTE_SMB </dev/tty || REMOTE_SMB=""
+    fi
+fi
+
+[ -z "$LIBRARY" ] && die "no library specified"
+LIBRARY="${LIBRARY%/}"   # drop trailing slash
+
+# --- render mplay.conf ---
+mkdir -p "$(dirname "$MPLAY_CONF")"
+cat > "$MPLAY_CONF" <<EOF
+# mplay machine-specific config — written by mplay-setup. Edit freely; re-run
+# 'mplay --setup' to regenerate. NOT tracked by git.
+
+LIBRARY="$LIBRARY"
+DOWNLOADS="$DOWNLOADS"
+REMOTE_SMB="$REMOTE_SMB"
+ARTIST_ALIASES="$ALIASES"
+EOF
+
+# seed an empty alias table if none exists
+[ -e "$ALIASES" ] || cp "$REPO/config/mplay/artist-aliases.conf.example" "$ALIASES" 2>/dev/null || true
+
+# --- render templated configs (pure-bash substitution; slash-safe) ---
+render() {  # render <template> <dest>
+    local tmpl="$1" dest="$2" line
+    mkdir -p "$(dirname "$dest")"
+    : > "$dest"
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line//__MUSIC_DIR__/$LIBRARY}"
+        line="${line//__MPD_HOME__/$MPD_HOME}"
+        printf '%s\n' "$line" >> "$dest"
+    done < "$tmpl"
+}
+
+[ -f "$MPD_TMPL" ] && render "$MPD_TMPL" "$MPD_CONF"
+mkdir -p "$MPD_HOME/playlists"
+[ -f "$NCM_TMPL" ] && render "$NCM_TMPL" "$NCMPCPP_CONF"
+
+say ""
+say "  ✓ setup complete:"
+say "      library : $LIBRARY"
+[ -n "$DOWNLOADS" ] && say "      source  : $DOWNLOADS"
+say "      wrote   : $MPLAY_CONF"
+say "                $MPD_CONF"
+say "                $NCMPCPP_CONF"
+say ""

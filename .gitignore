@@ -1,9 +1,11 @@
 .DS_Store
 *.swp
 
-# Machine-specific configs (seeded from the .example templates by install.sh).
+# Machine-specific / generated configs (rendered from .example templates by
+# install.sh / mplay-setup). Only the .example templates are tracked.
 config/mplay/mplay.conf
 config/mplay/artist-aliases.conf
+config/ncmpcpp/config
 
 # Compiled artifacts.
 bin/mplay-srate

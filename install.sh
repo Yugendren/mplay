@@ -26,22 +26,13 @@ else
     echo "warning: swiftc not found — skipping mplay-srate (run: xcode-select --install)"
 fi
 
-# 3. Symlink generic configs.
+# 3. Symlink the path-independent configs. (ncmpcpp/config and ~/.mpd/mpd.conf
+#    embed your library path, so they are generated per-user by mplay-setup —
+#    not symlinked.)
 ln -sf "$REPO/config/mplay/tmux.conf"      "$CFG/mplay/tmux.conf"
-ln -sf "$REPO/config/ncmpcpp/config"       "$CFG/ncmpcpp/config"
 ln -sf "$REPO/config/ncmpcpp/bindings"     "$CFG/ncmpcpp/bindings"
 ln -sf "$REPO/config/ncmpcpp/cover.sh"     "$CFG/ncmpcpp/cover.sh"
 
-# 4. Seed machine-specific configs from templates (copy once, never overwrite).
-seed() {  # seed <example> <dest>
-    if [ ! -e "$2" ]; then
-        cp "$1" "$2"
-        echo "created $2 — edit it for your setup."
-    fi
-}
-seed "$REPO/config/mplay/mplay.conf.example"          "$CFG/mplay/mplay.conf"
-seed "$REPO/config/mplay/artist-aliases.conf.example" "$CFG/mplay/artist-aliases.conf"
-
 echo "installed."
 echo "deps: brew install mpd mpc ncmpcpp fzf tmux chafa ffmpeg"
-echo "next: edit ~/.config/mplay/mplay.conf, then run: mplay"
+echo "next: run 'mplay' — a one-time setup wizard will ask where your music is."

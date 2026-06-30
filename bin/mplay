@@ -6,9 +6,30 @@
 #   ?    keybinding cheatsheet (mplay-help)
 # Background: mplay-sync ingests new music; mplay-audiomatch matches the output
 # device sample rate to each track.
+# First run (or `mplay --setup`) launches the setup wizard.
+
+MPLAY_CONF="${MPLAY_CONF:-$HOME/.config/mplay/mplay.conf}"
+MPD_CONF="$HOME/.mpd/mpd.conf"
+
+# Setup is needed if a config is missing, or the configured library is gone.
+needs_setup() {
+    [ -f "$MPLAY_CONF" ] || return 0
+    [ -f "$MPD_CONF" ] || return 0
+    local LIBRARY=""
+    # shellcheck source=/dev/null
+    . "$MPLAY_CONF" 2>/dev/null
+    [ -n "$LIBRARY" ] && [ -d "$LIBRARY" ] || return 0
+    return 1
+}
+
+if [ "$1" = "--setup" ] || [ "$1" = "setup" ]; then
+    mplay-setup || exit 1
+elif needs_setup; then
+    mplay-setup || exit 1
+fi
 
 if ! pgrep -x mpd >/dev/null; then
-    mpd ~/.mpd/mpd.conf 2>/dev/null
+    mpd "$MPD_CONF" 2>/dev/null
     sleep 0.5
     mpc update --wait >/dev/null 2>&1
 fi

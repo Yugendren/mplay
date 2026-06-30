@@ -1,6 +1,9 @@
 #!/bin/bash
 # Extract and display album art in Ghostty/Kitty-compatible terminals
-MUSIC_DIR="$HOME/Music/flac-library"
+MPLAY_CONF="${MPLAY_CONF:-$HOME/.config/mplay/mplay.conf}"
+# shellcheck source=/dev/null
+[ -f "$MPLAY_CONF" ] && . "$MPLAY_CONF"
+MUSIC_DIR="${LIBRARY:-$HOME/Music/flac-library}"
 COVER_PATH="/tmp/ncmpcpp_cover.jpg"
 
 # Get current song path from mpd

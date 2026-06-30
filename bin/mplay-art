@@ -3,7 +3,10 @@
 # Usage: mplay-art [--ascii]
 #   (default)  Kitty protocol image (native Ghostty, full quality)
 #   --ascii    Braille dot art with truecolor colors
-MUSIC_DIR="$HOME/Music/flac-library"
+MPLAY_CONF="${MPLAY_CONF:-$HOME/.config/mplay/mplay.conf}"
+# shellcheck source=/dev/null
+[ -f "$MPLAY_CONF" ] && . "$MPLAY_CONF"
+MUSIC_DIR="${LIBRARY:-$HOME/Music/flac-library}"
 COVER="/tmp/ncmpcpp_cover.jpg"
 
 USE_ASCII=false

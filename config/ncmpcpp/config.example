@@ -1,4 +1,4 @@
-mpd_music_dir = /Users/yugendren/Music/flac-library
+mpd_music_dir = __MUSIC_DIR__
 ncmpcpp_directory = ~/.config/ncmpcpp
 
 # Display

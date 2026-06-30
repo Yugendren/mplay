@@ -1,0 +1,22 @@
+# mpd config template. mplay-setup renders this into ~/.mpd/mpd.conf, filling in
+# your music library path and the ~/.mpd home. You should not need to edit it
+# by hand (re-run 'mplay --setup' to regenerate).
+
+music_directory    "__MUSIC_DIR__"
+playlist_directory "__MPD_HOME__/playlists"
+db_file            "__MPD_HOME__/database"
+log_file           "__MPD_HOME__/log"
+pid_file           "__MPD_HOME__/pid"
+state_file         "__MPD_HOME__/state"
+sticker_file       "__MPD_HOME__/sticker.sql"
+
+follow_outside_symlinks "yes"
+follow_inside_symlinks  "yes"
+
+auto_update "yes"
+
+audio_output {
+    type "osx"
+    name "CoreAudio"
+    mixer_type "software"
+}
