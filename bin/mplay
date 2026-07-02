@@ -28,10 +28,26 @@ elif needs_setup; then
     mplay-setup || exit 1
 fi
 
-if ! pgrep -x mpd >/dev/null; then
+start_mpd() {
+    pkill -9 -x mpd 2>/dev/null
+    sleep 1                       # let the :6600 socket release before rebinding
     mpd "$MPD_CONF" 2>/dev/null
     sleep 0.5
     mpc update --wait >/dev/null 2>&1
+}
+
+if ! pgrep -x mpd >/dev/null; then
+    start_mpd
+fi
+
+# Self-heal a stale CoreAudio device handle. When the default output device
+# changes (eqMac restart, headphones (un)plugged, etc.) mpd keeps a dead
+# reference and fails to open its output — playback freezes at 0:00 with
+# OSStatus 560947818 ('!obj' / kAudioHardwareBadObjectError). Only a full
+# restart clears the cached handle; disable/enable does not. mpc surfaces the
+# condition on the status line, so detect it and restart before we attach.
+if mpc status 2>&1 | grep -qiE 'problems opening audio|failed to open .*coreaudio'; then
+    start_mpd
 fi
 
 # default to in-order playback (random/repeat/consume/single off)
